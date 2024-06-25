@@ -1,0 +1,60 @@
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import IO, Mapping
+import pandas as pd
+from datetime import datetime
+
+"""
+
+"""
+class TransactionParser(ABC):
+    @staticmethod
+    @abstractmethod
+    def parse(transactions: IO) -> pd.DataFrame:
+        pass
+
+class FidelityCcTransactionParser():
+    @staticmethod
+    def parse(transactions: IO) -> pd.DataFrame:
+        def date_parser(s):
+            return datetime.strptime(s, '%Y-%m-%d')
+        df = pd.read_csv(transactions, parse_dates=[0], date_parser=date_parser)
+        df = pd.DataFrame(df.rename({'Date': 'date', 'Name': 'description', 'Amount': 'amount'}, axis=1)[['date', 'description', 'amount']])
+        df['type'] = 'Credit'
+        return df
+TransactionParser.register(FidelityCcTransactionParser)
+
+class BOfACcTransactionParser():
+    @staticmethod
+    def parse(transactions: IO) -> pd.DataFrame:
+        def date_parser(s):
+            return datetime.strptime(s, '%m/%d/%Y')
+        df = pd.read_csv(transactions, parse_dates=[0], date_parser=date_parser)
+        df = pd.DataFrame(df.rename({'Posted Date':'date', 'Payee': 'description', 'Amount': 'amount'}, axis=1)[['date', 'description', 'amount']])
+        df['type'] = 'Credit'
+        return df
+TransactionParser.register(BOfACcTransactionParser)
+
+class FidelityBaTransactionParser():
+    @staticmethod
+    def parse(transactions: IO) -> pd.DataFrame:
+        def date_parser(s):
+            return datetime.strptime(s, ' %m/%d/%Y')
+        df = pd.read_csv(transactions, parse_dates=[0], date_parser=date_parser)
+        df = pd.DataFrame(df.rename({'Run Date': 'date', 'Action': 'description', 'Amount ($)': 'amount'}, axis=1)[['date', 'description', 'amount']])
+        df['type'] = 'Bank'
+        return df
+TransactionParser.register(FidelityBaTransactionParser)
+
+_parsers = {
+    'fidelity-cc': FidelityCcTransactionParser,
+    'fidelity-ba': FidelityBaTransactionParser,
+    'bank-of-america-cc': BOfACcTransactionParser
+}
+
+def parse_transaction(transaction: IO, transaction_type: str, parsers: Mapping[str, TransactionParser]=_parsers) -> pd.DataFrame:
+    parser = _parsers.get(transaction_type)
+    if not parser:
+        raise ValueError(f'transaction {transaction_type} does not have an implemented parser')
+    else:
+        return parser.parse(transaction)
