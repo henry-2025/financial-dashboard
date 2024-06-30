@@ -1,8 +1,8 @@
 import argparse, os, sqlite3
 from typing import IO, Optional, Set
-from matplotlib import pyplot as plt
 from flask import Flask, render_template, redirect, request, session
 import pandas as pd
+import numpy as np
 from transaction_parsers import parse_transaction
 from werkzeug.datastructures import FileStorage
 
@@ -92,16 +92,24 @@ def configure():
                 return redirect("assessment")
             # otherwise, go directly to the category selection
 
-    # remove duplicate keys in transactions
-    current_transactions = current_transactions.groupby(['date', 'description', 'type']).sum()
+    # remove duplicate keys in transactions by summing
+    current_transactions = current_transactions.groupby(['date', 'description', 'type']).sum().reset_index()
+    current_transactions['date'] = current_transactions['date'].map(lambda x: x.value)
+    current_transactions = current_transactions.set_index(['date', 'description', 'type'])
+
     with init_db() as db:
-        stored_transactions = pd.read_sql('SELECT * FROM transactions', db, index_col=['date', 'description', 'type'], parse_dates=['date'])
+        # get transactions, diff with those currently stored in database and reindex
+        stored_transactions = pd.read_sql('SELECT * FROM transactions', db, index_col=['date', 'description', 'type'])
         new_indices = [i not in stored_transactions.index for i in current_transactions.index]
         new_transactions = current_transactions[new_indices].reset_index()
-        new_transactions['date'] = new_transactions['date'].map(lambda x: x.value)
-        new_transactions.to_sql(name='transactions', con=db, if_exists='append', index=False)
         order_to_index = {x: i for x, i in enumerate(current_transactions.index)}
         session['order_to_index'] = order_to_index
+
+        new_transactions.to_sql(name='transactions', con=db, if_exists='append', index=False)
+
+        current_transactions = current_transactions.reset_index()
+        current_transactions['date'] = current_transactions['date'].map(lambda x: pd.Timestamp(x))
+        current_transactions = current_transactions.set_index(['date', 'description', 'type'])
         return render_template("category_selection.html", transactions=zip(range(len(current_transactions)), current_transactions.itertuples(index=True)))
 
 @app.post("/category_selection")
@@ -109,19 +117,109 @@ def post_category_selection():
     categories = request.form.get("categories")
     return render_template("category_selection.html")
 
-def monthly_breakdown(transactions: pd.DataFrame):
+def monthly_charts(transactions: pd.DataFrame) -> dict:
     months = {1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun', 7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'}
-    expenses = transactions[transactions['expese'] == True]
+    expenses = transactions[transactions['income'] == False]
     income = transactions[transactions['income'] == True]
-    #expense_by_month = expenses.groupby([expenses.])
+    expense_by_month = pd.DataFrame(expenses.groupby([expenses['expense_category'], expenses.index.get_level_values(0).month]).sum()[['amount']])
+
+    month_ids = sorted(list(set(expense_by_month.index.get_level_values(1))))
+    n_months = len(month_ids)
+    months_axis = [months[m] for m in month_ids]
+
+
+    income_by_month = pd.DataFrame(income.groupby(income.index.get_level_values(0).month).sum()['amount'])
+    present_months = set(income_by_month.index.get_level_values(0))
+
+    cats_by_total = list(pd.DataFrame(expense_by_month.groupby('expense_category').sum()).sort_values('amount').index)
+    cats = list(reversed(cats_by_total.copy()))
+
+    def sort_func(x):
+        return [cats_by_total.index(i) for i in x.values]
+    expense_by_month_arr = pd.DataFrame(expense_by_month.unstack()).fillna(0).sort_index(axis=0)
+
+
+    # Income and expenses
+    expense_by_month_overall = expense_by_month.groupby(level=1).sum()
+    income_and_expenses = [
+        {'x': months_axis,
+            'y': [expense_by_month_overall.loc[i]['amount'] if i in expense_by_month_overall.index else 0 for i in month_ids],
+            'type': 'bar',
+            'name': 'income'},
+        {'x': months_axis,
+            'y': [income_by_month.loc[i]['amount'] if i in income_by_month.index else 0 for i in month_ids],
+            'type': 'bar',
+            'name': 'expenses'
+        }]
+
+    # savings
+    s = pd.DataFrame(income_by_month - expense_by_month_overall).fillna(0)['amount'].tolist()
+    savings = [{'x': months_axis, 'y': s, 'type': 'bar', 'name': 'savings'}]
+    print(s)
+
+    # Expense breakdown
+    expense_breakdown = []
+    for category in cats_by_total:
+        category_expenses = expense_by_month.loc[category]
+        expense_breakdown.append(
+            {
+                'x': months_axis,
+                'y': [category_expenses.loc[i]['amount'] if i in category_expenses.index else 0 for i in month_ids],
+                'type': 'bar',
+                'name': category
+            }
+        )
+
+    # Income breakdown
+    income_breakdown = []
+    cats_by_total_income_filtered = [c for c in cats_by_total if c in income.index.get_level_values(0)]
+    for category in cats_by_total_income_filtered:
+        category_income = income.loc[category]
+        income_breakdown.append(
+            {
+                'x': months_axis,
+                'y': [category_income.loc[i]['amount'] if i in category_income.index else 0 for i in month_ids],
+                'type': 'bar',
+                'name': category
+            }
+        )
+
+    # we want the list to look like the following
+    # [ {
+    #     x: ["giraffes", "orangutans", "monkeys"],
+    #     y: [20, 14, 23],
+    #     name: "SF Zoo",
+    #     type: "bar",
+    # },
+    #
+    # {
+    #     x: ["giraffes", "orangutans", "monkeys"],
+    #     y: [12, 18, 29],
+    #     name: "LA Zoo",
+    #     type: "bar",
+    # } ];
+
+    xmonths = []
+    for m in months_axis:
+        xmonths.append(m)
+        xmonths.append(f"{m}\nincome")
+
+    return {'income_and_expenses': income_and_expenses,
+        'savings': savings,
+        'income_breakdown': income_breakdown,
+        'expense_breakdown': expense_breakdown}
+
+
 
 @app.get("/assessment")
 def assessment():
     with db_connect() as db:
-        transactions = pd.read_sql("SELECT * FROM transactions", db, index_col=['date', 'description'])
-        monthly_breakdown = monthly_breakdown(transactions)
+        transactions = pd.read_sql("SELECT * FROM transactions", db)
+        transactions['date'] = transactions['date'].map(lambda x: pd.Timestamp(x))
+        transactions = transactions.set_index(['date', 'description'])
+        mb = monthly_charts(transactions)
 
-        return render_template("assessment.html", expenses=expenses)
+        return render_template("assessment.html", income_and_expenses=mb['income_and_expenses'], savings=mb['savings'], expense_breakdown=mb['expense_breakdown'], income_breakdown=mb['income_breakdown'])
 
 @app.post("/assessment")
 def assessment_post():
@@ -142,8 +240,6 @@ def assessment_post():
             i = income[x]
             e = excludes[x]
 
-            print(index)
-            print(db.execute("SELECT * FROM transactions WHERE date = ? AND description = ?", index).fetchall())
             if e:
                 # somehow we need to identify the rows in the table with the past request. Maybe a session key?
                 db.execute("DELETE FROM transactions WHERE date = ? AND description = ?", index)
