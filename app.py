@@ -3,11 +3,12 @@ from typing import IO, Optional, Set
 from flask import Flask, render_template, redirect, request, session
 import pandas as pd
 import numpy as np
+import uuid
 from transaction_parsers import parse_transaction
 from werkzeug.datastructures import FileStorage
 
 app = Flask(__name__)
-app.secret_key = 'db2c0d8a-275c-11ef-b5da-e32f975dcd51'
+app.secret_key = str(uuid.uuid4())
 
 @app.route("/")
 def start_page():
