@@ -16,33 +16,27 @@ class TransactionParser(ABC):
 class FidelityCcTransactionParser():
     @staticmethod
     def parse(transactions: IO) -> pd.DataFrame:
-        def date_parser(s):
-            return datetime.strptime(s, '%Y-%m-%d')
-        df = pd.read_csv(transactions, parse_dates=[0], date_parser=date_parser)
+        df = pd.read_csv(transactions, parse_dates=[0], date_format='%Y-%m-%d')
         df = pd.DataFrame(df.rename({'Date': 'date', 'Name': 'description', 'Amount': 'amount'}, axis=1)[['date', 'description', 'amount']])
-        df['type'] = 'Credit'
+        df['type'] = 'Fidelity CC'
         return df
 TransactionParser.register(FidelityCcTransactionParser)
 
 class BOfACcTransactionParser():
     @staticmethod
     def parse(transactions: IO) -> pd.DataFrame:
-        def date_parser(s):
-            return datetime.strptime(s, '%m/%d/%Y')
-        df = pd.read_csv(transactions, parse_dates=[0], date_parser=date_parser)
+        df = pd.read_csv(transactions, parse_dates=[0], date_format='%m/%d/%Y')
         df = pd.DataFrame(df.rename({'Posted Date':'date', 'Payee': 'description', 'Amount': 'amount'}, axis=1)[['date', 'description', 'amount']])
-        df['type'] = 'Credit'
+        df['type'] = 'Bank of America CC'
         return df
 TransactionParser.register(BOfACcTransactionParser)
 
 class FidelityBaTransactionParser():
     @staticmethod
     def parse(transactions: IO) -> pd.DataFrame:
-        def date_parser(s):
-            return datetime.strptime(s, ' %m/%d/%Y')
-        df = pd.read_csv(transactions, parse_dates=[0], date_parser=date_parser)
+        df = pd.read_csv(transactions, parse_dates=[0], date_format=' %m/%d/%Y')
         df = pd.DataFrame(df.rename({'Run Date': 'date', 'Action': 'description', 'Amount ($)': 'amount'}, axis=1)[['date', 'description', 'amount']])
-        df['type'] = 'Bank'
+        df['type'] = 'Fidelity BA'
         return df
 TransactionParser.register(FidelityBaTransactionParser)
 

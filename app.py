@@ -12,6 +12,7 @@ app.secret_key = 'db2c0d8a-275c-11ef-b5da-e32f975dcd51'
 @app.route("/")
 def start_page():
     #TODO: implement startup business logic
+    session.clear()
     return render_template("start.html")
 
 def init_db() -> sqlite3.Connection:
@@ -99,18 +100,27 @@ def configure():
 
     with init_db() as db:
         # get transactions, diff with those currently stored in database and reindex
-        stored_transactions = pd.read_sql('SELECT * FROM transactions', db, index_col=['date', 'description', 'type'])
+        stored_transactions = pd.read_sql('SELECT * FROM transactions', db, index_col=['date', 'description', 'type'], dtype={'amount': float, 'income': bool, 'exclude': bool, 'session_index': int, 'expense_category': str})
         new_indices = [i not in stored_transactions.index for i in current_transactions.index]
         new_transactions = current_transactions[new_indices].reset_index()
-        order_to_index = {x: i for x, i in enumerate(current_transactions.index)}
-        session['order_to_index'] = order_to_index
+        new_transactions['income'] = False
+        new_transactions['exclude'] = False
+        new_transactions['session_index'] = -1
+        new_transactions['expense_category'] = 'none yet'
 
-        new_transactions.to_sql(name='transactions', con=db, if_exists='append', index=False)
+        all_transactions = pd.concat([new_transactions, stored_transactions.reset_index()], axis=0).set_index(['date', 'description', 'type']).sort_index()
+        all_transactions['session_index'] = pd.Series(data=range(len(all_transactions)), index=all_transactions.index)
+        # print(tx)
+        for index, amount, income, exclude, session_index, expense_category in all_transactions.itertuples():
+            if expense_category == 'none yet':
+                db.execute("INSERT INTO transactions(date, description, type, amount, session_index) VALUES(?, ?, ?, ?, ?)", [*index, amount, session_index])
+            else:
+                db.execute("UPDATE transactions SET session_index = ? WHERE date = ? AND description = ? AND type = ?", [session_index, *index])
 
-        current_transactions = current_transactions.reset_index()
-        current_transactions['date'] = current_transactions['date'].map(lambda x: pd.Timestamp(x))
-        current_transactions = current_transactions.set_index(['date', 'description', 'type'])
-        return render_template("category_selection.html", transactions=zip(range(len(current_transactions)), current_transactions.itertuples(index=True)))
+        all_transactions = all_transactions.reset_index()
+        all_transactions['date'] = all_transactions['date'].map(lambda x: pd.Timestamp(x).strftime("%Y-%m-%d"))
+        all_transactions = all_transactions.set_index(['date', 'description', 'type']).sort_index()
+        return render_template("category_selection.html", transactions=zip(range(len(all_transactions)), all_transactions.itertuples(index=True)))
 
 @app.post("/category_selection")
 def post_category_selection():
@@ -225,26 +235,21 @@ def assessment():
 def assessment_post():
     items = [int(x[9:]) for x in request.form.keys() if x[:8] == 'category']
     categories = [request.form.get(f'category-{x}') for x in items]
-    excludes = [True if request.form.get(f'exclude{x}') == 'on' else False for x in items]
+    excludes = [True if request.form.get(f'exclude-{x}') == 'on' else False for x in items]
     income = [True if request.form.get(f'income-{x}') == 'on' else False for x in items]
     assert(len(categories) == len(excludes))
     assert(len(income) == len(categories))
 
-    order_to_index = session['order_to_index']
-
     with db_connect() as db:
+        session_index  = pd.read_sql('SELECT session_index, date, description, type FROM transactions', db, index_col='session_index', dtype={'date': int, 'description': str, 'session_index': int})
         for x in range(len(categories)):
-            index = order_to_index[str(x)][:2]
-
+            date = int(session_index.loc[x]['date'])
+            description = session_index.loc[x]['description']
             c = categories[x]
             i = income[x]
             e = excludes[x]
 
-            if e:
-                # somehow we need to identify the rows in the table with the past request. Maybe a session key?
-                db.execute("DELETE FROM transactions WHERE date = ? AND description = ?", index)
-            else:
-                db.execute("UPDATE transactions SET expense_category = ?, income = ? WHERE date = ? AND description = ?", (c, i, *index))
+            db.execute("UPDATE transactions SET expense_category = ?, income = ?, exclude = ? WHERE date = ? AND description = ?", [c, i, e, date, description])
     return redirect("/assessment")
 
 def parse_args():
