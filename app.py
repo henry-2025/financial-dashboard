@@ -110,7 +110,6 @@ def configure():
 
         all_transactions = pd.concat([new_transactions, stored_transactions.reset_index()], axis=0).set_index(['date', 'description', 'type']).sort_index()
         all_transactions['session_index'] = pd.Series(data=range(len(all_transactions)), index=all_transactions.index)
-        # print(tx)
         for index, amount, income, exclude, session_index, expense_category in all_transactions.itertuples():
             if expense_category == 'none yet':
                 db.execute("INSERT INTO transactions(date, description, type, amount, session_index) VALUES(?, ?, ?, ?, ?)", [*index, amount, session_index])
@@ -131,41 +130,51 @@ def monthly_charts(transactions: pd.DataFrame) -> dict:
     months = {1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 5: 'may', 6: 'jun', 7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'}
     expenses = transactions[transactions['income'] == False]
     income = transactions[transactions['income'] == True]
-    expense_by_month = pd.DataFrame(expenses.groupby([expenses['expense_category'], expenses.index.get_level_values(0).month]).sum()[['amount']])
+    expense_by_month = -pd.DataFrame(expenses.groupby([expenses['expense_category'], expenses.index.get_level_values(0).month]).sum()[['amount']])
+    income_by_month = pd.DataFrame(income.groupby([income['expense_category'], income.index.get_level_values(0).month]).sum()[['amount']])
 
     month_ids = sorted(list(set(expense_by_month.index.get_level_values(1))))
     n_months = len(month_ids)
     months_axis = [months[m] for m in month_ids]
 
 
-    income_by_month = pd.DataFrame(income.groupby(income.index.get_level_values(0).month).sum()['amount'])
-    present_months = set(income_by_month.index.get_level_values(0))
+    income_by_month_no_cats = pd.DataFrame(income.groupby(income.index.get_level_values(0).month).sum()['amount'])
+    present_months = set(income_by_month_no_cats.index.get_level_values(0))
 
     cats_by_total = list(pd.DataFrame(expense_by_month.groupby('expense_category').sum()).sort_values('amount').index)
     cats = list(reversed(cats_by_total.copy()))
 
     def sort_func(x):
         return [cats_by_total.index(i) for i in x.values]
-    expense_by_month_arr = pd.DataFrame(expense_by_month.unstack()).fillna(0).sort_index(axis=0)
 
 
     # Income and expenses
     expense_by_month_overall = expense_by_month.groupby(level=1).sum()
+    expense_by_month_overall_list = [round(expense_by_month_overall.loc[i]['amount'], 3) if i in expense_by_month_overall.index else 0 for i in month_ids]
+    income_by_month_overall_list = [round(income_by_month_no_cats.loc[i]['amount'], 3) if i in income_by_month_no_cats.index else 0 for i in month_ids]
     income_and_expenses = [
         {'x': months_axis,
-            'y': [expense_by_month_overall.loc[i]['amount'] if i in expense_by_month_overall.index else 0 for i in month_ids],
+            'y': expense_by_month_overall_list,
             'type': 'bar',
-            'name': 'income'},
+            'text': expense_by_month_overall_list,
+            'textposition': 'auto',
+            'name': 'expenses'},
         {'x': months_axis,
-            'y': [income_by_month.loc[i]['amount'] if i in income_by_month.index else 0 for i in month_ids],
+            'y': income_by_month_overall_list,
             'type': 'bar',
-            'name': 'expenses'
+            'text': income_by_month_overall_list,
+            'textposition': 'auto',
+            'name': 'income'
         }]
 
     # savings
-    s = pd.DataFrame(income_by_month - expense_by_month_overall).fillna(0)['amount'].tolist()
-    savings = [{'x': months_axis, 'y': s, 'type': 'bar', 'name': 'savings'}]
-    print(s)
+    s = (income_by_month_no_cats - expense_by_month_overall).fillna(0)['amount'].tolist()
+    s = [round(f, 3) for f in s]
+    savings = [{'x': months_axis, 'y': s, 'text': s, 'textposition': 'auto', 'type': 'bar', 'name': 'savings'}]
+
+    # cumulative savings
+    s = np.cumsum(s).tolist()
+    savings_cum = [{'x': months_axis, 'y': s, 'text': s, 'textposition': 'auto', 'type': 'line', 'name': 'savings'}]
 
     # Expense breakdown
     expense_breakdown = []
@@ -182,9 +191,10 @@ def monthly_charts(transactions: pd.DataFrame) -> dict:
 
     # Income breakdown
     income_breakdown = []
-    cats_by_total_income_filtered = [c for c in cats_by_total if c in income.index.get_level_values(0)]
+    cats_by_total_income_filtered = [c for c in cats_by_total if c in income_by_month.index.get_level_values(0)]
+    print(cats_by_total_income_filtered)
     for category in cats_by_total_income_filtered:
-        category_income = income.loc[category]
+        category_income = income_by_month.loc[category]
         income_breakdown.append(
             {
                 'x': months_axis,
@@ -194,28 +204,9 @@ def monthly_charts(transactions: pd.DataFrame) -> dict:
             }
         )
 
-    # we want the list to look like the following
-    # [ {
-    #     x: ["giraffes", "orangutans", "monkeys"],
-    #     y: [20, 14, 23],
-    #     name: "SF Zoo",
-    #     type: "bar",
-    # },
-    #
-    # {
-    #     x: ["giraffes", "orangutans", "monkeys"],
-    #     y: [12, 18, 29],
-    #     name: "LA Zoo",
-    #     type: "bar",
-    # } ];
-
-    xmonths = []
-    for m in months_axis:
-        xmonths.append(m)
-        xmonths.append(f"{m}\nincome")
-
     return {'income_and_expenses': income_and_expenses,
         'savings': savings,
+        'savings_cum': savings_cum,
         'income_breakdown': income_breakdown,
         'expense_breakdown': expense_breakdown}
 
@@ -224,12 +215,12 @@ def monthly_charts(transactions: pd.DataFrame) -> dict:
 @app.get("/assessment")
 def assessment():
     with db_connect() as db:
-        transactions = pd.read_sql("SELECT * FROM transactions", db)
+        transactions = pd.read_sql("SELECT * FROM transactions WHERE exclude = 0", db)
         transactions['date'] = transactions['date'].map(lambda x: pd.Timestamp(x))
         transactions = transactions.set_index(['date', 'description'])
         mb = monthly_charts(transactions)
 
-        return render_template("assessment.html", income_and_expenses=mb['income_and_expenses'], savings=mb['savings'], expense_breakdown=mb['expense_breakdown'], income_breakdown=mb['income_breakdown'])
+        return render_template("assessment.html", **mb)
 
 @app.post("/assessment")
 def assessment_post():
