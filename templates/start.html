@@ -1,0 +1,105 @@
+<!doctype html>
+<head>
+    <title>Financial Assessment</title>
+</head>
+<html>
+    <body>
+        <h1>Configuration</h1>
+        <form
+            enctype="multipart/form-data"
+            action="/start_config"
+            method="POST"
+            id="config"
+            onsubmit="return checkSubmit()"
+        >
+            <button type="button" onclick="addNewSource()">
+                Add New Source
+            </button>
+            <button type="submit">Submit</button>
+        </form>
+    </body>
+</html>
+<style>
+    #config {
+        width: 50vw;
+        display: flex;
+        flex-direction: column;
+    }
+</style>
+
+<script>
+    fileCount = 0;
+
+    function addNewSource() {
+        fileCategories = [
+            "Select Type",
+            "Bank Of America CC",
+            "Fidelity CC",
+            "Fidelity BA",
+        ];
+
+        div = document.createElement("div");
+        input = document.createElement("input");
+        select = document.createElement("select");
+        close = document.createElement("button");
+
+        div.setAttribute("id", `row-${fileCount}`);
+        div.setAttribute("class", "row");
+
+        input.setAttribute("type", "file");
+        input.setAttribute("name", `file-${fileCount}`);
+        input.setAttribute("accept", "text/text");
+        input.setAttribute("class", "file");
+
+        close.onclick = removeRow.bind(close, fileCount);
+        close.setAttribute("type", "button");
+        close.innerText = "Remove";
+
+        select.setAttribute("name", `select-${fileCount}`);
+        fileCategories.forEach((cat) => {
+            option = document.createElement("option");
+            option.setAttribute(
+                "value",
+                cat.toLowerCase().replaceAll(" ", "-"),
+            );
+            option.innerText = cat;
+            select.appendChild(option);
+        });
+
+        div.appendChild(input);
+        div.appendChild(select);
+        div.appendChild(close);
+
+        document.getElementById("config");
+        config.appendChild(div);
+
+        fileCount += 1;
+    }
+
+    function removeRow(rowId) {
+        document.getElementById(`row-${rowId}`).remove();
+        fileCount -= 1;
+    }
+
+    function checkSubmit() {
+        rows = document.querySelectorAll("div.row");
+        if (rows.length == 0) {
+            alert("Must select at least one file");
+            return false;
+        }
+
+        for (let i = 0; i < rows.length; i++) {
+            if (rows[i].children[0].files.length == 0) {
+                alert("One of the file inputs has no selected file");
+                return false;
+            }
+            if (rows[i].children[1].selectedIndex == 0) {
+                alert(
+                    "One of the file inputs has not been assigned a file type",
+                );
+                return false;
+            }
+        }
+        return true;
+    }
+</script>

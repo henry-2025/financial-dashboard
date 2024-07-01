@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+    <body>
+        <form action="/assessment" method="POST">
+            <table>
+                <tr>
+                    <th>Date</th>
+                    <th>Transaction Description</th>
+                    <th>Amount</th>
+                    <th>Transaction Source</th>
+                    <th>Category</th>
+                    <th>Income</th>
+                    <th>Exclude</th>
+                </tr>
+                {% for i, t in transactions %}
+                <tr
+                    class="{{ 'new-transaction' if t.expense_category == 'none yet' else 'none' }}"
+                >
+                    <td>{{ t.Index[0] }}</td>
+                    <td>{{ t.Index[1] }}</td>
+                    <td>{{ t.amount }}</td>
+                    <td>{{ t.Index[2] }}</td>
+                    <td>
+                        <select name="category-{{ i }}">
+                            <option
+                                value="lifestyle"
+                                {{ 'selected' if t.expense_category == 'lifestyle' }}
+                            >
+                                Lifestyle
+                            </option>
+                            <option
+                                value="gas"
+                                {{ 'selected' if t.expense_category == 'gas' }}
+                            >
+                                Gas
+                            </option>
+                            <option
+                                value="travel"
+                                {{ 'selected' if t.expense_category == 'travel' }}
+                            >
+                                Travel
+                            </option>
+                            <option
+                                value="other"
+                                {{ 'selected' if t.expense_category == 'other' }}
+                            >
+                                Other
+                            </option>
+                            <option
+                                value="furniture"
+                                {{ 'selected' if t.expense_category == 'furniture' }}
+                            >
+                                Furniture
+                            </option>
+                            <option
+                                value="transport"
+                                {{ 'selected' if t.expense_category == 'transport' }}
+                            >
+                                Transport
+                            </option>
+                            <option
+                                value="food"
+                                {{ 'selected' if t.expense_category == 'food' }}
+                            >
+                                Food
+                            </option>
+                            <option
+                                value="insurance"
+                                {{ 'selected' if t.expense_category == 'insurance' }}
+                            >
+                                Insurance
+                            </option>
+                            <option
+                                value="transport"
+                                {{ 'selected' if t.expense_category == 'transport' }}
+                            >
+                                Transport
+                            </option>
+                            <option
+                                value="rent"
+                                {{ 'selected' if t.expense_category == 'rent' }}
+                            >
+                                Rent
+                            </option>
+                            <option
+                                value="loans"
+                                {{ 'selected' if t.expense_category == 'loans' }}
+                            >
+                                Student Loans
+                            </option>
+                        </select>
+                    </td>
+                    <td>
+                        <input name="income-{{ i }}"
+                            {{ 'checked' if t.income }}
+                            type="checkbox" />
+                    </td>
+                    <td>
+                        <input name="exclude-{{ i }}"
+                            {{ 'checked' if t.exclude == True }}
+                            type="checkbox" />
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            <button type="submit">Submit</button>
+        </form>
+    </body>
+</html>
+
+<style>
+    .new-transaction {
+        background-color: yellow;
+    }
+</style>

@@ -1,0 +1,47 @@
+<!doctype html>
+<head>
+    <!-- Load plotly.js into the DOM -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+
+<html>
+    <body>
+        <h1>Pretty Basic, But Pretty Good Financial Assessment Dashboard</h1>
+        <h2>General Assessment Tables</h2>
+        <div id="income-and-expenses"></div>
+        <div id="savings"></div>
+        <div id="savings-cumulative"></div>
+        <div id="expense-breakdown"></div>
+        <div id="income-breakdown"></div>
+        <h2>Item-Specific Breakdown</h2>
+    </body>
+</html>
+
+<script>
+    var incomeAndExpenses = {{ income_and_expenses|tojson }};
+    var layout = { barmode: 'group', title: 'Income And Expenses', xaxis: {title: 'Month'}, yaxis: {title: '$'}};
+    Plotly.newPlot('income-and-expenses', incomeAndExpenses, layout);
+
+    var savings = {{ savings|tojson }};
+    var layoutSavings = { title: 'Savings (month by month)', xaxis: {title: 'Month'}, yaxis: {title: '$'} };
+    Plotly.newPlot('savings', savings, layoutSavings);
+
+    var savingsCumulative = {{ savings_cum|tojson }};
+    var layoutSavingsCumulative = { title: 'Savings (cumulative)', xaxis: {title: 'Month'}, yaxis: {title: '$'} };
+    Plotly.newPlot('savings-cumulative', savingsCumulative, layoutSavingsCumulative);
+
+    var incomeBreakdown = {{ income_breakdown|tojson }};
+    var layout = { barmode: 'stack', title: 'Income Breakdown', xaxis: {title: 'Month'}, yaxis: {title: '$'}};
+    Plotly.newPlot('income-breakdown', incomeBreakdown, layout);
+
+    var expenseBreakdown = {{ expense_breakdown|tojson }};
+    var layout = { barmode: 'stack', title: 'Expense Breakdown', xaxis: {title: 'Month'}, yaxis: {title: '$'}};
+    Plotly.newPlot('expense-breakdown', expenseBreakdown, layout);
+</script>
+
+<style>
+    body {
+        align-items: center;
+        text-align: center;
+    }
+</style>
