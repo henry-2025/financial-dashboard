@@ -40,8 +40,18 @@ class FidelityBaTransactionParser():
         return df
 TransactionParser.register(FidelityBaTransactionParser)
 
+class ChaseCcTransactionParser():
+    @staticmethod
+    def parse(transactions: IO) -> pd.DataFrame:
+        df = pd.read_csv(transactions, parse_dates=[0], date_format=' %m/%d/%Y')
+        df = pd.DataFrame(df.rename({'Transaction Date': 'date', 'Description': 'description', 'Amount': 'amount'}, axis=1)[['date', 'description', 'amount']])
+        df['type'] = 'Chase CC'
+        return df
+TransactionParser.register(ChaseCCTransactionParser)
+
 _parsers = {
     'fidelity-cc': FidelityCcTransactionParser,
+    'chase-cc': ChaseCcTransactionParser,
     'fidelity-ba': FidelityBaTransactionParser,
     'bank-of-america-cc': BOfACcTransactionParser
 }
